@@ -1,0 +1,201 @@
+ html,
+    body {
+        height: 100%;
+        width: 100%;
+    }
+    body {
+        margin: 0;
+    }
+    #map {
+        width: 100%;
+        height: 100%;
+    }
+    svg {
+        position: relative;
+    }
+    path {
+        fill: none;
+        stroke-width: 2px;
+        stroke: rgb(0, 204, 255);
+        stroke-opacity: 1;
+    }
+
+.timeFactor {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.time {
+  position: relative;
+  font-size: 42px;
+  line-height: 50px;
+  margin-bottom: 5px;
+}
+
+.datetime-box .controls .btn.speed {
+  display: inline-block;
+  font-size: 14px;
+  font-weight: 400;
+  border-width: 2px;
+  padding: 3px 6px;
+  margin-right: 3px;
+  background-color: rgba(0,0,0,.9);
+}
+.datetime-box .controls .btn.speed {
+  font-size: 13px;
+  color: #ccc;
+}
+.faster {
+  margin-left: 3px;
+}
+
+.box {
+  position: absolute;
+  width: 260px;
+  padding: 20px;
+  background: rgba(0,0,0,.6);
+  border-radius: 5px;
+  color: #eee;
+  z-index: 501;
+}
+
+.datetime-box.box {
+  top: 10px;
+  left: 10px;
+  font-weight: 300;
+
+}
+
+circle[class^='marker'] { 
+  opacity: 1;
+  fill: green;
+}
+
+circle .path {
+
+  opacity: 1;
+  fill: green;
+
+}
+
+.blocking{
+
+  opacity: 0.5;
+  fill: red;
+  z-index: 501;
+}
+
+.streetBlocked{
+
+  fill: none;
+  stroke: red;
+  stroke-width: 3px;
+  z-index: 666;
+
+}
+
+.unblockall {
+  z-index: 501;
+  position: relative;
+
+
+
+}
+
+.batchButton {
+  z-index: 501;
+  position: relative;
+
+
+
+
+}
+
+.panel{
+  position: absolute;
+
+  z-index: 501;
+  background: rgba(0,0,0,.6);
+  width: 260px;
+  padding-left: 20px;
+  padding-right: 20px;
+  padding-bottom: 20px;
+
+  left: 10px;
+  top:175px;
+
+
+}
+
+.text{
+
+  color: white;
+  text-align: center;
+  font-color: green;
+
+}
+
+.image{
+
+z-index: 666;
+
+}
+
+.car{
+  
+  z-index: 666;
+}
+.lastPath{
+
+        fill: none;
+        stroke-width: 2px;
+        stroke: rgb(0, 255, 145);
+        stroke-opacity: 1;
+}
+
+.lastPathMarker {
+
+  opacity: 1;
+  fill: green;
+
+}
+
+.lastPathCar{
+
+  z-index: 666;
+  
+}
+
+.overlay {
+  position: absolute;
+  top: 40%;
+  left: 50%;
+  height: auto;
+
+  background: rgba(0,0,0,.9);
+  border-radius: 5px;
+  color: #ddd;
+  text-shadow: 1px 1px 1px #000;
+  letter-spacing: 1px;
+
+  z-index: 500;
+
+  -webkit-transform: translate(-50%,-50%);
+  -ms-transform: translate(-50%,-50%);
+  transform: translate(-50%,-50%);
+
+  -webkit-box-shadow: 0 0 4px rgba(102,175,234,.8);
+  -moz-box-shadow: 0 0 4px rgba(102,175,234,.8);
+  box-shadow: 0 0 4px rgba(102,175,234,.8);
+}
+  .container.overlay {
+    max-width: 720px;
+  }
+
+  #bugs{
+
+    font-size: 10px;
+
+
+  }

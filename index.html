@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html>
+<!-- PLEASE MAKE SURE THAT YOU READ THE README FILE. IT SHOULD HELP YOU TO UNDERSTAND HOW THE APP WORK :)-->
+<head>
+    <meta charset="utf-8" />
+
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="leaflet.css" />
+    <link rel="stylesheet" href="stylesheet.css" />
+
+    <script src="jquery.min.js" type="text/javascript"> </script>
+    <script src="d3.min.js" type="text/javascript"></script>
+    <script src="leaflet.js" type="text/javascript"></script>
+    <script src="moment.js" type="text/javascript"></script>
+    <script type="text/javascript" src="underscore.js"></script>
+
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js" type="text/javascript"></script>
+    
+
+</head>
+
+<body oncontextmenu="return false;">
+
+  <div class="container overlay">
+    <div class="innerlay">
+      <h3>Welcome to the Dresden Route Blocker !</h3>
+      <p>We used taxi data from Dresden in order to show the routing service from our project : ExCELL.</p>
+      <p>You can either watch the animation or double-click on the map to block a specific street, take a look to what happen then !</p>
+      <p>Enjoy !</p>
+      <p><a id="begin" class="btn btn-primary" role="button">
+          <i class="glyphicon glyphicon-flight"></i>Begin</a></p>
+    </div>
+  </div>
+
+
+  <div class="datetime-box box">
+    <div class="date"></div>
+    <div class= "controls">
+      <button class="btn btn-default speed slower">
+        <i class="glyphicon glyphicon-backward"></i> Slower
+      </button>
+      <div class="timeFactor">
+        <span>1</span> min/s 
+      </div>
+      <button class="btn btn-default speed faster">
+        Faster <i class="glyphicon glyphicon-forward"></i>
+      </button>
+    </div>
+  </div>
+<div class="panel"> 
+<h3 class="text"> Buttons </h3>
+<div> 
+<img src="lclick.png" alt="Right click" style="width:55px;height:75px;">
+<span style="color:white;"> Add a dot to block</span>
+</div>
+<br>
+<div>
+<img src="rclick.png" alt="Right click" style="width:55px;height:75px;">
+<span style="color:white;"> Remove a dot to unblock </span>
+</div>
+<br>
+  <div class="unblockall"> 
+    <button type="button" class="btn btn-danger btn-lg" id="reset">Unblock all streets</button>
+  </div>
+  </div>
+
+    <div id="map"></div>
+
+    <script>
+// Variables are declared globally here so every function can use them.
+    var myMap;
+    var transform;
+    var d3path;
+    var savedBlockedStreets = [];
+    var numberOfDblClicks =   0;
+    var blockedStreetsCoords = [];
+    var unblockedStreetsCoords = [];
+    var savedCoords = [];
+    var time = moment.unix(1402498800); //  June the 6th, 2014 at 5 pm, default value of the timebox at launch, here is a useful website for timestamps : http://www.timestamp.fr/? NOTE THAT YOU HAVE TO CHANGE THIS VALUE IF YOU LOAD A DIFFERENT FILE 
+    var timer;
+    var timeFactor = 1;  
+    var dateFormat = 'YYYY-MM-DD HH:mm:ss';
+    var csvData;
+    var data_used = [];
+    var datum = [];
+    var $date = $('.date'), $time = $('.time');
+    var item = {};
+    var fileIterator = 22; // 22 is the value used for the Long Night Of Science 2016, NOTE THAT YOU HAVE TO CHANGE THIS VALUE IF YOU LOAD A DIFFERENT FILE
+    var numberOfPathsStarted = 0;
+    var numberOfPathsOver = 0;
+    var theID = 1;
+    var originalGeojson;
+    var featuresdata;
+    var incrementedTimestamp = 1402498800; // June the 6th, 2014 at 5 pm, value of our timestamp at launch. NOTE THAT YOU HAVE TO CHANGE THIS VALUE IF YOU LOAD A DIFFERENT FILE 
+    var laMinute = 60;
+    var saveCoordsOnClick;
+    var blockedStreetSavedPaths;
+    var blockedStreetSavedCircles;
+    var sortedCSV; 
+    var sortedCSVOriginal;
+    var pathStartingDate = [];
+    var intervalRunning;
+
+    // Our map need some tiles, those tiles are taken from CartoDB, URL taken on the OpenStreetMap wiki
+     myMap = L.tileLayer('https://dnv9my2eseobd.cloudfront.net/v3/cartodb.map-4xtxp73f/{z}/{x}/{y}.png', {
+     attribution: 'Map tiles by CartoDB, under CC BY 3.0. Data by OpenStreetMap, under ODbL.'
+    });
+
+
+    var map = L.map(('map'),{zoomControl: false, doubleClickZoom: false, maxZoom: 18, minZoom: 12});
+
+        map.addLayer(myMap)
+           .setView([51.0508900, 13.7383200], 14)
+
+    // Zoom has been disabled but it could be implemented in the right way in a further iteration ! :)
+
+        map.touchZoom.disable();
+        map.doubleClickZoom.disable();
+        map.scrollWheelZoom.disable();
+        map.boxZoom.disable();
+        map.keyboard.disable();
+
+    // Changing the cursor from the "dragging hand"
+    $('.leaflet-container').css('cursor','default');
+
+    var svg;
+    var g;
+  
+  // Functions needed in order to launch the application properly
+
+  initSVG();
+  initEvents();
+
+  /*/*//*/*//*/*//*/*//*/*//*/*//*/*//*/*//*/*//*/*//*/*//*/*//*/*//*/*/
+  //////////////////////////CORE FUNCTIONS/////////////////////////////
+  /*/*//*/*//*/*//*/*//*/*//*/*//*/*//*/*//*/*//*/*//*/*//*/*//*/*//*/*/
+
+function initEvents() {
+
+      // Here we add the buttons on the document
+
+  $('#begin').click(function () {
+
+  $('.overlay').hide();
+
+    launch();
+
+  });
+
+          
+  var $timeFactor = $('.timeFactor span');
+
+  $('.slower').click(function(){
+    if(timeFactor > 1){
+        timeFactor -= 1;  
+        $timeFactor.text(timeFactor);
+        laMinute = laMinute-60;
+    };
+ });
+
+  $('.faster').click(function(){
+    if(timeFactor < 4){
+        timeFactor += 1;
+        $timeFactor.text(timeFactor);
+        laMinute = laMinute+60;     
+    };
+  });
+
+  $("#reset").on("click",function(){
+
+    $.ajax({
+            async: false,
+            url: "http://localhost:43434/v1/unblockAll",
+            success: function(){
+
+                  console.log("All streets unblocked");
+                  d3.selectAll(".blocking").remove();
+                  d3.selectAll(".streetBlocked").remove();
+                  savedBlockedStreets = [];
+                  numberOfDblClicks = 0;
+                  saveCoordsAllPaths();
+                  getNewCoordsAndUpdate();
+          }
+      })
+  });
+}
+
+function initSVG(){
+// Function which generate the path code for each path. Please see the D3 documentation for more information about it
+    transform = d3.geo.transform({ point: projectPoint });
+    d3path = d3.geo.path().projection(transform);
+
+}
+
+// We need to convert our point into latitude and longitude coordinates, specially for the routing request.
+function pointToLatLon(p) {
+  return map.layerPointToLatLng(new L.Point(p.x, p.y));
+}
+
+// In some cases, we need to convert the latitude and longitude coordinates into pixels coordinates.
+function projectPoint (x, y) {
+  var point = map.latLngToLayerPoint(new L.LatLng(y, x));
+  this.stream.point(point.x, point.y);
+}
+
+  /*/*//*/*//*/*//*/*//*/*//*/*//*/*//*/*//*/*//*/*//*/*//*/*//*/*//*/*/
+  ////////////////////FUNCTIONALITIES FUNCTIONS/////////////////////////
+  /*/*//*/*//*/*//*/*//*/*//*/*//*/*//*/*//*/*//*/*//*/*//*/*//*/*//*/*/
+
+function launch(){
+ d3.csv("Data/split_50_trips_per_file/lnos_data_chunk"+fileIterator+".csv", function(collection) { 
+      
+    // Collection is an object which contains all the elements from the CSV file.
+
+    csvData = collection;
+
+    sortedCSV = sortCSV(csvData); // We have to sort all the paths whose ending date is superior to the start date of the last path of the SVG, of course it's not perfect, but it was a temporary solution back in the days.
+
+    sortedCSVOriginal = sortedCSV; // We create a copie of our sorted CSV, details below
+    console.log(pathStartingDate); // Variable created within the sortCSV function. This array contains the start date of each path. An iteration is made on the array every second (see function "Running") 
+    
+    // When we launch our application, we created a global GEOJson object which will have all our paths
+    item["type"] = "FeatureCollection";
+    item["features"] = [];
+
+     // We append a new SVG with a "g variable" at each launch of a new file.
+    svg = d3.select(map.getPanes().overlayPane).append("svg");
+    g = svg.append("g").attr("class","leaflet-zoom-hide").attr("id",fileIterator);
+
+    // No need to touch this part of the code, it just creates the taxi image used later when displaying a trip.     
+    var defs = svg.append('defs');
+
+    defs.append('pattern')
+        .attr('id', 'taxi')
+        .attr("viewBox", "0 0 20 20")
+        .attr('width', '100%')
+        .attr('height', '100%')
+        .append('svg:image')
+        .attr('xlink:href', 'taxi.png')
+        .attr('x', 0)
+        .attr('y', 0)
+        .attr('width',20)
+        .attr('height', 20);
+
+
+    defs.append('pattern')
+        .attr('id', 'block')
+        .attr("viewBox", "0 0 12 12")
+        .attr('width', '100%')
+        .attr('height', '100%')
+        .append('svg:image')
+        .attr('xlink:href', 'block.png')
+        .attr('x', 0)
+        .attr('y', 0)
+        .attr('width',12)
+        .attr('height', 12);
+
+    // Before loading a new file, every path as well with every circle, is being saved in an array. If the array isn't empty well it means that paths/circles have been saved. Then we only need to append them in the new SVG/G previously created.
+
+    if(blockedStreetSavedPaths != undefined){ 
+
+        for(key in blockedStreetSavedPaths[0]){ 
+  
+          $("g:last").append(blockedStreetSavedPaths[key]);
+                
+  }
+}
+
+    if(blockedStreetSavedCircles != undefined){ 
+
+        for(key in blockedStreetSavedCircles[0]){ 
+
+          $("g:last").append(blockedStreetSavedCircles[key]);
+                 
+    }
+}
+
+  // By far the most important function, see its details below.
+
+    running();
+
+  });
+} 
+
+
+function sortCSV(leCSV){
+
+  var numberOfTripsDeleted = 0;
+  var csvLength = leCSV.length;
+
+  var lastTrip = leCSV[leCSV.length-1];
+     
+
+    // We are manipulating a timestamp, but we only require a date accurated within a minute, so the seconds have to be removed before converting the date to a timestamp.
+  var lastTripStartSeconds = (new Date(lastTrip.track_start).getSeconds());
+  parseInt(lastTripStartSeconds);
+ 
+    // Every path's ending date will be compared with the starting date of the last path of the file, so we need its value.
+  var lastTripStart = ((new Date(lastTrip.track_start).getTime()/1000)-lastTripStartSeconds);
+      
+    // Let's iterate in our previously loaded CSV
+  for(var key in leCSV){
+
+    // As said previously, we only need to work with minutes so each ending date is converted into a timestamp displaying only minutes.
+      secondsOfSelectedTrip = (new Date(leCSV[key].track_end).getSeconds());
+      leCSV[key].track_end = ((new Date(leCSV[key].track_end).getTime()/1000)-secondsOfSelectedTrip);
+
+
+    // If the current trip's ending date is superior or equal to the start date of the last path of the current, then it's removed.
+  if(leCSV[key].track_end >= lastTripStart){
+
+          numberOfTripsDeleted++;
+          delete leCSV[key];
+        }
+}
+
+    // Paths which not respect the loop condition are deleted (but not removed), then we need to reorganise the IDs of all our paths if we want to iterate on our CSV file later.
+
+  var numberOfTripsWanted = csvLength-numberOfTripsDeleted;
+
+  while(leCSV.length != numberOfTripsWanted){ 
+
+      for(var i = 0; i < csvLength ;i++){ 
+       
+        if(leCSV[i] === undefined){
+    // The splice method is really useful to reorganise the variable we'll manipulate later on. When an element in the array has an undefined property (which means a path previously deleted), it's being definitely removed.
+          leCSV.splice(i,1);
+
+       }     
+    }
+ }
+    // We also convert the starting date into a timestamp (but this could have been done while creating the GEOJson file).
+
+  for(var key in leCSV){
+
+        secondsOfSelectedTrip = (new Date(leCSV[key].track_start).getSeconds());
+        pathStartingDate.push(((new Date(leCSV[key].track_start).getTime()/1000)-secondsOfSelectedTrip));
+        
+}
+     
+      return leCSV;  
+}
+
+window.pathsAnimate =  function (featuresdata){
+  // Function generating the animations
+
+    var features = featuresdata;
+
+  // To our global variable called G, we create a new path ... 
+
+      g.append('path')
+       .attr('d', d3path(features)) // ...  whose coordinates are translated into a path code with our d3path variable ...
+       .attr('id', theID) // ... with its ID
+       .attr('timeStampStart', features.properties.track_start) // ... and its starting timestamp, which is here mainly for information purpose
+       .datum(features.properties) // We also add some properties within our path (properties taken from the CSV)
+       .each(pathTransition); // Now that our path is in the document, we call a function to generate the transition
+        
+
+    function pathTransition(d) {
+
+    var l = this.getTotalLength(); // This is the total length of our path ...
+    var endPoint = this.getPointAtLength(l);  // ... which we manipulate to get the ending point
+
+    var marker = g.append('circle') // Add the green ending marker on the map with the coordinates of the ending point.
+      .attr({r: 5, cx: endPoint.x, cy: endPoint.y})
+      .attr('class','marker')
+      .datum(pointToLatLon(endPoint)); // Coordinates are originally is pixels so we have to translate them to latitude,longitde
+
+    var car = g.append('circle') // It's our taxi ! Notice the null values of its attributes when created
+      .attr("r",0)
+      .attr("cx",0)
+      .attr("cy",0)
+      .attr("class","car")
+      .style("fill", "url(#taxi") // We fill the circle with the pattern previously created
+      .attr("id", -theID);
+
+      car.transition() // For each car, we created a transition which lasts 1 seconde. During this seconde the radius of our circle goes from 0 to 25
+      .duration(1000)
+      .attr("r",25);
+
+       theID++;
+
+       // Here we calculate the duration of the animation based on the ending date of path as well with the current timestamp (manipulated with the timefactor).
+    var newDuration = ((d.track_end - incrementedTimestamp)*1000)/60/timeFactor;
+
+    d3.select(this) // We select our current path
+      .attr('class', 'path') // Let's add a class for further manipulation
+      .transition() 
+      .duration(newDuration)
+      .ease("linear") // Optionnal here, it makes the animation to run at a fixed speed.
+      .each('start', function (d) {
+
+          numberOfPathsStarted++;
+          this.style.opacity = 1;  // We make our path visible
+      })
+        .each('end', function (d) {
+        
+            car.attr("r",40).transition() // Ending animation of a car, its radius goes from 25 to 40 ...
+               .duration(1200)
+               .attr("r",0) // ... then from 40 to 0
+               .style('opacity',0)
+               .remove(); 
+
+
+            marker.attr('class', 'marker')
+                  .transition()
+                  .duration(500)
+                  .style('opacity', 0)
+                //.remove();
+
+            numberOfPathsOver++;
+
+            if(numberOfPathsOver === numberOfPathsStarted){ // If both values are equal it means that all paths have been drawn, we can load the next CSV file then.
+
+              loadNextBatchOfPaths();
+          }
+
+
+            d3.select(this)
+              .transition()
+              .duration(500)
+              .style('opacity', 0);
+           // .remove();
+  
+     
+
+      })
+        .attrTween('stroke-dasharray', function () {
+          // Function which is creating the stroke you see when the car is moving.
+          return d3.interpolateString('0,' + l, l + ',' + l);
+      });
+
+}
+
+// Function which take care of the blocking/unblocking stuff.
+window.BlockingAndUnblocking = function (pCoords){
+  
+
+// On user's click a circle is appended on our global G variable, it's coordinates are the mouse's one.
+    var marker = g.append('circle')
+                  .attr({r: 12, cx: pCoords.x, cy: pCoords.y, id: numberOfDblClicks})
+                  .attr('class','blocking')
+                  .style("fill","url(#block)")
+                  .on("contextmenu", function(){ // Context menu here is a reference to the right click, the context menu has been disabled in order to allow the right click to work as a delete button.
+
+                                    numberOfDblClicks--; // Variable which tracks the number of clicks the user has done, it reprents the number of circle curently active in the document
+                                    console.log("deletion, numberOfDblClicks : " + numberOfDblClicks);
+                                    var theDeletedCircle = $(this).context.id; // We grab the ID of the deleted circle, its ID is the row number of the array which contains the unblocking URL sent to Felix's web service.
+                                    $.ajax({
+                                            async: false,
+                                            url: unblockedStreetsCoords[$(this).context.id],
+                                            statusCode : {
+
+                                              200 : function(){
+
+                                                      console.log("Answer from the DELETE call");
+                                              }
+                                            },
+                                            success: function(){
+
+                                                // Once the request is finished, we have to update the routing of each path. See those functions details.
+                                                 saveCoordsAllPaths();
+                                                 getNewCoordsAndUpdate();
+                                                
+                                            }
+                                          })
+
+                                    // Once the street is unblocked, we have to update all our variables containing informations linked to this variable.
+                                    blockedStreetsCoords.splice($(this).context.id,1); // The URL used to blocked previously deleted street is deleted.
+                                    unblockedStreetsCoords.splice($(this).context.id,1); // same for the unblocking.
+                                
+                                    var idToDelete = $(this).context.id;
+
+                                    // After the URLs are deleted, we need to remove the street blocked visually speaking, we grab its ID in order to deleted the correct path on the SVG.
+                                   $(".streetBlocked")[idToDelete].remove();
+                                   savedBlockedStreets.splice(idToDelete,1);
+                                   $(this).remove();
+
+                                    // Then we need to reorganise our array containing all the circle of the streets being blocked. All the circles whose ID is superior to the ID of the deleted circles, are decremented in order to add another circle
+                                    // (up to 5 streets blocked). Otherwise once a circle has the ID number 4, it wouldn't be possible to block a street anymore.
+
+                                   $(".blocking").each(function() {
+
+                                      if($(this).context.id > theDeletedCircle){
+                                                  
+                                          $(this).context.id--;
+                                          $(".streetBlocked")[$(this).context.id].id--;
+                                       
+                                       }
+
+                                      })
+
+                                    });
+
+
+    // If the number of active circles respect these condition, we can add it !
+  if(numberOfDblClicks < 20){
+
+      console.log(numberOfDblClicks);
+
+      saveCoordsAllPaths(); // Better save the coordinates of all the paths before adding the circle.
+
+      // We need to get the coordinates in pixels of our mouse click to latitude and longitude coordinates.
+      var blockCoords = map.layerPointToLatLng(new L.Point(pCoords.x, pCoords.y));
+      console.log("Lat & Lng")
+      console.log(blockCoords);
+      // Those coordinates are needed to generate the blocking URL and the unblocking URL for Felix's web services.
+      blockedStreetsCoords[numberOfDblClicks] = "http://localhost:43434/v1/block?lat="+blockCoords.lat+"&lon="+blockCoords.lng+"";
+      unblockedStreetsCoords[numberOfDblClicks] = "http://localhost:43434/v1/unblock?lat="+blockCoords.lat+"&lon="+blockCoords.lng+"";
+
+      console.log(blockedStreetsCoords);
+      // Like the unblocking, an Ajax request is made to Felix's web service with the previously created URL.
+
+      $.ajax({
+            async: false,
+            url: blockedStreetsCoords[numberOfDblClicks],
+            statusCode : {
+
+              200 : function(){
+
+                    console.log("Answer from the ADD call");
+              }
+            },
+            success: function(streetBlockedCoordinates){
+
+                console.log("street blocked");
+        // We created a new feature ... featuring the coordinates of the street being blocked.
+        var line = {};
+
+        line["type"] = "FeatureCollection";
+        line["features"] = [];
+
+        line.features[0] = new Object();
+        line.features[0].geometry = new Object();
+        line.features[0].geometry.coordinates = streetBlockedCoordinates.coordinates;
+        line.features[0].geometry.type = "LineString";
+        line.features[0].properties = new Object
+        line.features[0].properties.id = 0; 
+        line.features[0].type = "Feature";
+
+        var lineF = line.features;
+
+       // This feature has to be added on the SVG
+
+        _.each(lineF, function (feature) {
+
+              g.append('path')
+               .attr('d', d3path(feature))
+               .attr({id: numberOfDblClicks})
+               .attr('class','streetBlocked');
+      })
+    }
+  })
+                
+      numberOfDblClicks++; 
+
+      console.log("Add, numberOfDblClicks : " + numberOfDblClicks);
+
+      // Let's update the whole document !
+      getNewCoordsAndUpdate();
+
+    }
+    else {
+      // Otherwise we just delete the circle the user has just added.
+      console.log("5 dots maximum, please remove one if you want to add another one");
+      $('circle:last').remove();
+    }
+}
+
+window.saveCoordsAllPaths = function(){
+
+  savedCoords = [];
+  saveCoordsOnClick = $(".path");
+
+  // For each trip currently active, we take its stroke-dasharray CSS property which represents a value in pixels the value is composed of a string like this (currentposition_value, final_position_value). This value also need to be converted into latitude, longitude coordinates.
+  _.each($(".path"), function(saveCoordsOnClick) {
+
+      var currentPosPixels = saveCoordsOnClick.getAttribute("stroke-dasharray").split(","); // We only need the current positiion so we split our string.
+      var currentPosCoords = saveCoordsOnClick.getPointAtLength(currentPosPixels[0]);
+
+      var nextStartingPoint = map.layerPointToLatLng(new L.Point(currentPosCoords.x, currentPosCoords.y)); // Current position in pixels is being concerted in to lat,long
+
+      savedCoords.push(nextStartingPoint); // The lat,long position of each path is added into an array.
+
+     })
+
+// Let's clear all the variables linked to our paths.
+  datum = [];
+  data_used = [];
+  item = {};
+  theID = 1;
+  d3.selectAll(".path").remove();
+  d3.selectAll(".marker").remove();
+  d3.selectAll(".car").remove();
+// Next function called is getNewCoordsAndUpdate
+}
+
+window.getNewCoordsAndUpdate = function (){
+
+
+ var savedCoordsFormated = [];
+
+ for(var i = 0; i < savedCoords.length; i++){ 
+
+  // The paths aren't deleted from the document while their reached their final destination.
+  // This, in order to get the right data for each path while iterating through the CSV (stored in a variable)
+  // If paths are deleted, the document is lighter but we have to track which data belongs to which path currently on the document. This could be implemented in the futur.
+
+    savedCoordsFormated.push({car_id: sortedCSVOriginal[i].car_id,
+                              end_lat: sortedCSVOriginal[i].end_lat,
+                              end_lon: sortedCSVOriginal[i].end_lon,
+                              start_lat: ""+savedCoords[i].lat+"",
+                              start_lon: ""+savedCoords[i].lng+"",
+                              tid: sortedCSVOriginal[i].tid,
+                              track_end: sortedCSVOriginal[i].track_end,
+                              track_start: sortedCSVOriginal[i].track_start
+    })
+  }
+
+ // Our new data which is basically the same, the only difference are the new starting coordinates.
+ csvData = savedCoordsFormated;
+ var newCoords = getCoords(csvData); // We retrieve the coordinates of each path by this call.
+ var newGeoJSON = createGEOJson(newCoords); // Once we got the coordinates from the web service, we create a new GEOJson file
+ // features data is our collection of features, features being projected on the map.
+ featuresdata = newGeoJSON;
+
+// This part was needed in order to print the paths with their new coordinates.
+ for(var it in featuresdata.features){ 
+
+  pathsAnimate(featuresdata.features[it]); 
+
+   }
+}
+
+window.createGEOJson = function (datum){ 
+         
+       // We create a new GEOjson which will get our paths with new coordinates.
+        item["type"] = "FeatureCollection";
+        item["features"] = [];
+
+      // csvData is the variable which contains the properties of our paths
+       for(var i = 0;i <csvData.length;i++){
+
+          item.features[i] = new Object();
+          item.features[i].geometry = new Object();
+          item.features[i].geometry.coordinates = datum[i]; // This contain the coordinates for a specific path after calling the web service.
+          item.features[i].geometry.type = "LineString";
+          item.features[i].properties = new Object
+          item.features[i].properties.id = i; 
+
+          var secondsStart = (new Date(sortedCSVOriginal[i].track_start).getSeconds());
+   
+          secondsStart = parseInt(secondsStart);
+
+          item.features[i].properties.track_start = ((new Date(sortedCSVOriginal[i].track_start).getTime()/1000)-secondsStart);  
+          item.features[i].properties.track_end = sortedCSVOriginal[i].track_end;
+
+          var ts =  new Date(sortedCSVOriginal[i].track_start).getTime()/1000;
+
+          item.features[i].properties.duration = (sortedCSVOriginal[i].track_end-ts);
+          item.features[i].type = "Feature";
+
+       }
+       return item;
+      }
+
+window.getCoords = function (theCSV){ 
+
+       // We iterate through our CSV, to create the requests for the web service
+        for(var i = 0;i < theCSV.length; i++){
+
+            data_used.push("http://localhost:43434/v1/routingGeoJson?startLat="+theCSV[i].start_lat+"&startLon="+theCSV[i].start_lon+"&endLat="+theCSV[i].end_lat+"&endLon="+theCSV[i].end_lon);
+
+        }
+
+        // Once URLs have been generated, we have to do an Ajax call for each one
+        // The answer is an array having the coordinates for the path.
+        // An array gets the coordinates for all the paths.
+        for(var key in data_used){
+
+          $.ajax({
+            async: false,
+            url: data_used[key],
+            success: function(data){
+
+              // In some cases, coordinates are situated outside Dresden, which creates an invalid request
+              // I hadn't the time to figure out a solution about this.
+                if(data === "Your input parameters for the routing service are invalid!"){
+
+               /*   var invalidPathIterator = key;
+                  sortedCSVOriginal.splice(invalidPathIterator,1);
+                  datum.splice(key,1); */       
+                
+                }
+                else{
+             
+                datum[key] = data.coordinates;  }
+
+            }
+          })
+        }
+          return datum;
+     }
+
+
+function loadNextBatchOfPaths(){
+
+// When the last path has been drawn, we have to clear all the variables in order to load our next file.
+  savedCoords = [];
+  csvData = {};
+  sortedCSVOriginal = {};
+  sortedCSV = {};
+  data_used = [];
+  datum = [];
+  item = {};
+  pathStartingDate = [];
+
+// We have to visually save the paths being blocked as well with the circle.
+
+  blockedStreetSavedPaths = d3.selectAll(".streetBlocked");
+  blockedStreetSavedCircles = d3.selectAll(".blocking");
+
+  d3.selectAll(".streetBlocked").remove();
+    d3.selectAll(".blocking").remove();
+      d3.selectAll(".car").remove();
+        d3.selectAll(".circle").remove();
+          d3.selectAll("svg").remove();
+  
+  clearInterval(intervalRunning);
+  // We increment the iterator to load the next file.
+  fileIterator++;
+  theID = 1;
+  launch();
+  }
+}  
+
+$(document).ready(function() {
+
+  window.onerror = function(msg, url, line, col, error) { 
+
+    console.log(msg);
+    console.log(url);
+    console.log(line);
+    console.log(col);
+    console.log(error); 
+
+  }
+
+  window.running = function (){ 
+
+ // We create an interval which will check every second the content of an array which have the starting date of all the trips. If a trip is equals or higher to the current timestamp, it means that the path has to be drawn. Once the animation of the path has been launch, it's deleted from the array to avoid the path being drawn more than once.   
+
+ intervalRunning = setInterval(function(){ 
+
+  if(pathStartingDate[0] != undefined){
+
+ // When a file is loaded, the timestamp grab the value of the first path in order to avoid waiting for our paths to be rendered.
+    incrementedTimestamp = pathStartingDate[0];
+    var newTimeStampToDisplay = moment.unix(incrementedTimestamp);
+   $date.text(newTimeStampToDisplay.format('dddd, MMM DD YYYY hh:mm a'));
+
+  }
+// Otherwise we increment the timestamp by a minute every second.
+  incrementedTimestamp = incrementedTimestamp+laMinute;
+  var newTimeStampToDisplay = moment.unix(incrementedTimestamp);
+  $date.text(newTimeStampToDisplay.format('dddd, MMM DD YYYY hh:mm a'));
+
+// Let's take a look to our array having the starting date of all the paths.
+  for(var ite in pathStartingDate){
+
+    if(pathStartingDate[ite] < incrementedTimestamp){
+
+      var k = ite;
+
+  // Better make an Ajax call to get the coordinates
+
+       $.ajax({
+            async: false,
+            url: ("http://localhost:43434/v1/routingGeoJson?startLat="+sortedCSV[k].start_lat+"&startLon="+sortedCSV[k].start_lon+"&endLat="+sortedCSV[k].end_lat+"&endLon="+sortedCSV[k].end_lon),
+            success: function(data){
+
+                if(data === "Your input parameters for the routing service are invalid!"){
+
+                 /* var invalidPathIterator = key;
+                  sortedCSVOriginal.splice(invalidPathIterator,1);
+                  datum.splice(key,1); */
+
+                 alert("Coordinates located outside Dresden !");
+               
+                }
+
+                else {
+
+   // Then we need to create GEOJson feature which will contain the data related to our trip            
+                
+      var lePath = {};
+      
+      lePath.geometry = new Object();
+      lePath.geometry.coordinates = data.coordinates;
+      lePath.geometry.type = "LineString";
+      lePath.properties = new Object
+      lePath.properties.id = k; 
+
+
+
+      lePath.properties.track_start = pathStartingDate[k];  
+      lePath.properties.track_end = sortedCSVOriginal[k].track_end;
+
+
+      lePath.properties.duration = (sortedCSVOriginal[k].track_end-lePath.properties.track_start);
+      lePath.type = "Feature";
+
+    // This feature is pushed to the global GEOJson object.
+      item.features.push(lePath) 
+
+        }
+      }
+   })
+
+    // When we add a path to our global GEOjson object, it recalculate the bounds of our SVG
+    // It also scales the g layer in accordance with the SVG.
+
+       var bounds = d3path.bounds(item);
+       var topLeft = bounds[0];
+       var bottomRight = bounds[1];
+
+        svg.attr("width", (bottomRight[0] - topLeft[0]))
+       .attr("height", (bottomRight[1] - topLeft[1]))
+       .style("left", topLeft[0] + "px")
+       .style("top", topLeft[1] + "px")
+       .attr("id",fileIterator)
+       .on("dblclick", function(){
+
+                  // Function which enable the blocking/unblocking functionnality.
+                  
+            console.log("x & y coordinates");
+            var point = d3.mouse(this);
+            var pCoords = {x: point[0]+topLeft[0], y: point[1]+topLeft[1] };
+          
+            BlockingAndUnblocking(pCoords);
+                      
+       });
+
+        g.attr("transform", "translate(" + -topLeft[0] + "," + -topLeft[1] + ")");
+
+        delete pathStartingDate[k];
+
+      // Once previous steps have been done, we can finally send the data of our trip to the function generating the animation
+
+        pathsAnimate(item.features[k]);
+   }     
+  }
+ }
+,1000);
+}
+  
+  setInterval(function() {
+
+  // Function generatin the trail you see during the animation.
+
+    var sample = $(".path");
+  
+     _.each($(".path"), function(sample) {
+  
+          // Every 10ms, we get the current position of each path as well with its final position.
+  
+          var trail = sample.getAttribute("stroke-dasharray").split(",");
+       
+          trail[0] = parseFloat(trail[0]);
+          trail[1] = parseFloat(trail[1]);
+  
+          var carPos = sample.getPointAtLength(trail[0]); // With the current position of the path we can add the taxi
+          $('#-'+sample.id).attr("cx", carPos.x);
+           $('#-'+sample.id).attr("cy",carPos.y);
+                   
+  
+        if(trail[0] > trail[1]/10){
+  
+           sample.setAttribute("stroke-dashoffset", trail[1]/10-trail[0]); // With this formula, we manipulet the stroke-dashoffset CSS property. The formula here means that we want to taxi to be   printed at the point representing 1/10th of the total length of the path. 
+          
+      }
+    })
+  }, 10);
+})
+    </script>
+</body>
+
+</html>
